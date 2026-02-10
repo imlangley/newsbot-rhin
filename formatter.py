@@ -47,18 +47,11 @@ def format_telegram_notification(
     safe_title = escape(title)
     safe_source = escape(source_name)
 
-    msg = f"""<b>ARTIKEL BARU - {safe_source}</b>
-
-<b>{safe_title}</b>
-{url}
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-<b>COPY UNTUK X / FACEBOOK:</b>
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-<code>{escape(post)}</code>
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-<i>Tap pada teks di atas untuk copy</i>"""
+    msg = (
+        f"<b>{safe_source}</b>\n"
+        f"<b>{safe_title}</b>\n\n"
+        f"<code>{escape(post)}</code>\n\n"
+        f"<i>Tap teks di atas untuk copy</i>"
+    )
 
     return msg
