@@ -305,6 +305,11 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def _process_and_send_article(article, context: ContextTypes.DEFAULT_TYPE):
     """Process satu artikel: summarize lalu kirim ke semua subscriber (1 artikel = 1 bubble chat)."""
     try:
+        # CRITICAL: Mark sebagai posted SEBELUM process untuk prevent race condition
+        # Jadi kalau ada scheduled check lagi, artikel ini ga ke-detect sebagai "new"
+        db.mark_article_posted(article.url, article.title, article.source_slug)
+        logger.info("Marked as posted (before processing): %s (%s)", article.title, article.source_name)
+
         # Summarize dengan AI
         summary = await summarize_article(article)
 
@@ -337,8 +342,6 @@ async def _process_and_send_article(article, context: ContextTypes.DEFAULT_TYPE)
                     db.remove_subscriber(chat_id)
                     logger.info("Removed inactive subscriber: %d", chat_id)
 
-        # Mark sebagai sudah di-post
-        db.mark_article_posted(article.url, article.title, article.source_slug)
         logger.info("Article processed and sent: %s (%s)", article.title, article.source_name)
 
     except Exception as e:
