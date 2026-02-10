@@ -318,45 +318,27 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
     date_str = now_wib.strftime("%d %B %Y")
     cutoff_str = f"{Config.RECAP_HOUR_WIB}:{Config.RECAP_MINUTE_WIB:02d} WIB"
 
-    # Bubble 1: Header ringkasan
-    header = f"<b>Rekap Harian - {date_str}</b>\n\n"
+    # Ringkasan rekap harian
+    msg = f"<b>Rekap Harian - {date_str}</b>\n\n"
     if total == 0:
-        header += "Tidak ada artikel baru yang diproses hari ini."
+        msg += "Tidak ada artikel baru yang diproses hari ini."
     else:
         for source_slug in by_source:
             source_name = _get_source_name(source_slug)
             count = len(by_source[source_slug])
-            header += f"{escape(source_name)}: <b>{count}</b> artikel\n"
-        header += f"\nTotal: <b>{total}</b> artikel"
-    header += f"\n\n<i>Cutoff: {cutoff_str}</i>"
+            msg += f"{escape(source_name)}: <b>{count}</b> artikel\n"
+        msg += f"\nTotal: <b>{total}</b> artikel"
+    msg += f"\n\n<i>Cutoff: {cutoff_str}</i>"
 
     for chat_id in subscribers:
         try:
-            # Kirim header
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=header,
+                text=msg,
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
             )
-            await asyncio.sleep(0.3)
-
-            # Kirim per media sebagai bubble terpisah
-            for source_slug, arts in by_source.items():
-                source_name = _get_source_name(source_slug)
-                msg = f"<b>{escape(source_name)}</b> - {len(arts)} artikel\n\n"
-                for i, art in enumerate(arts, 1):
-                    pub_str = _format_published_time(art)
-                    msg += f"{i}. <a href='{art['url']}'>{escape(art['title'])}</a>\n"
-                    msg += f"   {pub_str}\n\n"
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=msg,
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=True,
-                )
-                await asyncio.sleep(0.3)
-
+            await asyncio.sleep(0.5)
         except Exception as e:
             logger.error("Failed to send recap to chat_id %d: %s", chat_id, e)
             if "blocked" in str(e).lower() or "deactivated" in str(e).lower():
