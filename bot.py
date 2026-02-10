@@ -32,7 +32,10 @@ async def post_init(application: Application) -> None:
             BotCommand("start", "Mulai & berlangganan notifikasi"),
             BotCommand("stop", "Berhenti berlangganan notifikasi"),
             BotCommand("check", "Cek artikel baru sekarang"),
-            BotCommand("today", "Lihat berita hari ini"),
+            BotCommand("today", "Lihat berita hari ini (semua sumber)"),
+            BotCommand("ruang", "Lihat berita hari ini dari RUANG.ID"),
+            BotCommand("catra", "Lihat berita hari ini dari CATRAWARTA"),
+            BotCommand("mabur", "Lihat berita hari ini dari MABUR.CO"),
             BotCommand("latest", "Lihat 5 artikel terakhir"),
             BotCommand("status", "Status bot"),
             BotCommand("help", "Bantuan"),
@@ -44,28 +47,38 @@ async def post_init(application: Application) -> None:
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start - register subscriber."""
     chat_id = update.effective_chat.id
+    chat_type = update.effective_chat.type
     username = update.effective_user.username or update.effective_user.first_name
 
+    # Di grup, subscriber adalah grup itu sendiri
     db.add_subscriber(chat_id, username)
-    logger.info("New subscriber: %s (chat_id: %d)", username, chat_id)
+    logger.info("New subscriber: %s (chat_id: %d, type: %s)", username, chat_id, chat_type)
 
     site_list = ", ".join(s["name"] for s in SITES)
     interval = Config.CHECK_INTERVAL_SECONDS // 60
 
-    await update.message.reply_text(
+    msg = (
         f"Halo <b>{escape(username)}</b>!\n\n"
         f"Kamu sekarang berlangganan notifikasi artikel baru dari <b>{site_list}</b>.\n\n"
         f"Bot akan cek setiap <b>{interval} menit</b> "
         "dan mengirim rangkuman + format siap post untuk X/Twitter dan Facebook.\n\n"
         "<b>Perintah:</b>\n"
         "/check - Cek artikel baru sekarang\n"
-        "/today - Lihat berita hari ini\n"
+        "/today - Lihat berita hari ini (semua sumber)\n"
+        "/ruang - Lihat berita hari ini dari RUANG.ID\n"
+        "/catra - Lihat berita hari ini dari CATRAWARTA\n"
+        "/mabur - Lihat berita hari ini dari MABUR.CO\n"
         "/latest - 5 artikel terakhir\n"
         "/status - Status bot\n"
         "/stop - Berhenti berlangganan\n"
-        "/help - Bantuan",
-        parse_mode=ParseMode.HTML,
+        "/help - Bantuan"
     )
+
+    # Di grup, reply ke message yang trigger command
+    if chat_type in ["group", "supergroup"]:
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -82,12 +95,15 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     site_list = "\n".join(f"  - {s['name']} ({s['site_url']})" for s in SITES)
     interval = Config.CHECK_INTERVAL_SECONDS // 60
 
-    await update.message.reply_text(
+    msg = (
         "<b>Perintah yang tersedia:</b>\n\n"
         "/start - Mulai & berlangganan notifikasi\n"
         "/stop - Berhenti berlangganan\n"
         "/check - Cek artikel baru sekarang (manual)\n"
         "/today - Lihat semua berita yang sudah diproses hari ini\n"
+        "/ruang - Lihat berita hari ini dari RUANG.ID\n"
+        "/catra - Lihat berita hari ini dari CATRAWARTA\n"
+        "/mabur - Lihat berita hari ini dari MABUR.CO\n"
         "/latest - Lihat 5 artikel terakhir yang sudah diproses\n"
         "/status - Status bot (jumlah subscriber, artikel, dll)\n"
         "/help - Tampilkan pesan ini\n\n"
@@ -98,9 +114,11 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "2. Merangkum dengan AI\n"
         "3. Membuat caption untuk X/Twitter dan Facebook\n"
         "4. Mengirim notifikasi siap copy-paste\n\n"
-        f"Rekap harian otomatis dikirim setiap jam <b>{Config.RECAP_HOUR_WIB}:00 WIB</b>.",
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
+        f"Rekap harian otomatis dikirim setiap jam <b>{Config.RECAP_HOUR_WIB}:00 WIB</b>."
+    )
+
+    await update.message.reply_text(
+        msg, parse_mode=ParseMode.HTML, disable_web_page_preview=True
     )
 
 
@@ -154,7 +172,7 @@ async def cmd_latest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /today - lihat berita yang sudah diproses hari ini."""
+    """Handle /today - lihat berita yang sudah diproses hari ini (semua source)."""
     articles = db.get_today_articles(Config.RECAP_HOUR_WIB)
 
     if not articles:
@@ -193,6 +211,63 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             msg, parse_mode=ParseMode.HTML, disable_web_page_preview=True
         )
         await asyncio.sleep(0.3)
+
+
+async def cmd_source_today(update: Update, context: ContextTypes.DEFAULT_TYPE, source_slug: str) -> None:
+    """Helper: lihat berita hari ini dari 1 source saja."""
+    articles = db.get_today_articles(Config.RECAP_HOUR_WIB)
+
+    # Filter by source
+    filtered = [a for a in articles if a.get("source") == source_slug]
+
+    if not filtered:
+        # Cari nama site dari SITES config
+        source_name = source_slug.upper()
+        for s in SITES:
+            if s["slug"] == source_slug:
+                source_name = s["name"]
+                break
+        await update.message.reply_text(f"Belum ada artikel dari {source_name} yang diproses hari ini.")
+        return
+
+    # Cari nama site dari SITES config
+    source_name = source_slug.upper()
+    for s in SITES:
+        if s["slug"] == source_slug:
+            source_name = s["name"]
+            break
+
+    msg = f"<b>Berita Hari Ini - {escape(source_name)}</b>\n"
+    msg += f"Total: <b>{len(filtered)}</b> artikel\n\n"
+
+    for i, art in enumerate(filtered, 1):
+        msg += f"{i}. <a href='{art['url']}'>{escape(art['title'])}</a>\n"
+        # Tampilkan jam diproses (convert ke WIB)
+        try:
+            posted_utc = datetime.fromisoformat(art["posted_at"])
+            posted_wib = posted_utc.astimezone(WIB)
+            msg += f"   {posted_wib.strftime('%H:%M WIB')}\n\n"
+        except (ValueError, KeyError):
+            msg += f"   {art['posted_at'][:16]}\n\n"
+
+    await update.message.reply_text(
+        msg, parse_mode=ParseMode.HTML, disable_web_page_preview=True
+    )
+
+
+async def cmd_ruang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /ruang - lihat berita hari ini dari RUANG.ID."""
+    await cmd_source_today(update, context, "ruangid")
+
+
+async def cmd_catra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /catra - lihat berita hari ini dari CATRAWARTA."""
+    await cmd_source_today(update, context, "catrawarta")
+
+
+async def cmd_mabur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /mabur - lihat berita hari ini dari MABUR.CO."""
+    await cmd_source_today(update, context, "maburco")
 
 
 async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -367,6 +442,9 @@ def create_bot(database: Database) -> Application:
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("latest", cmd_latest))
     app.add_handler(CommandHandler("today", cmd_today))
+    app.add_handler(CommandHandler("ruang", cmd_ruang))
+    app.add_handler(CommandHandler("catra", cmd_catra))
+    app.add_handler(CommandHandler("mabur", cmd_mabur))
     app.add_handler(CommandHandler("check", cmd_check))
 
     # Setup scheduled job - cek RSS setiap interval
