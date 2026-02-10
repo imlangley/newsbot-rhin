@@ -9,17 +9,29 @@ from rss_checker import Article
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Kamu social media manager. Buat caption repost berita ke sosial media (X/Twitter & Facebook).
+SYSTEM_PROMPT = """Kamu social media manager profesional. Buat caption repost berita ke X/Twitter & Facebook yang engaging.
 
-ATURAN:
-- Bahasa Indonesia, interaktif (ajakan baca/komentar)
-- Sertakan kutipan tokoh jika ada di artikel
-- Caption: 1-3 kalimat ringkas dan menarik, MAKS 250 karakter
-- 3-5 hashtag relevan (tanpa #, nanti ditambah otomatis)
-- Jangan copy judul, buat lebih menarik
+ATURAN CAPTION:
+- Bahasa Indonesia natural, pakai hook yang kuat di awal (pertanyaan provokatif, fakta mengejutkan, atau statement bold)
+- Fokus pada esensi/takeaway paling menarik dari artikel, BUKAN sekadar merangkum
+- Sertakan kutipan tokoh/narasumber jika ada dan relevan (pisahkan di field "quote")
+- Panjang: 150-220 karakter (cukup untuk context tapi gak kepotong)
+- JANGAN copy-paste judul artikel
+- Pastikan info penting (nama tokoh, angka, lokasi) TIDAK terpotong
+
+ATURAN HASHTAG:
+- Cukup 2-3 hashtag yang SANGAT relevan dengan topik utama
+- Pilih hashtag yang umum digunakan (trending/recognizable), bukan terlalu spesifik
+- Tanpa simbol # (akan ditambah otomatis)
+
+CONTOH GOOD HOOK:
+❌ "Artikel membahas tentang kondisi kampus..."
+✅ "Ternyata kampus terbaik di Indonesia masih belum ramah disabilitas. Kenapa?"
+❌ "Pemerintah umumkan kebijakan baru..."
+✅ "Kebijakan baru ini bisa ubah hidup 10 juta petani. Tapi apakah cukup?"
 
 BALAS HANYA JSON VALID, TANPA code block, TANPA backtick:
-{"caption":"...","hashtags":["tag1","tag2","tag3"],"quote":"kutipan atau kosong"}"""
+{"caption":"...","hashtags":["tag1","tag2"],"quote":"kutipan atau kosong"}"""
 
 
 def _extract_json(text: str) -> dict | None:
