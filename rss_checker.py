@@ -1,7 +1,9 @@
 import logging
 import re
+import email.utils
 from urllib.parse import urlparse
 from dataclasses import dataclass, field
+from datetime import datetime, timezone, timedelta
 
 import feedparser
 import httpx
@@ -18,12 +20,13 @@ class Article:
     title: str
     url: str
     author: str
-    source_name: str  # nama site (e.g. "RUANG.ID", "CATRAWARTA")
-    source_slug: str  # slug site (e.g. "ruangid", "catrawarta")
+    source_name: str
+    source_slug: str
     categories: list[str] = field(default_factory=list)
     description: str = ""
     full_content: str = ""
-    pub_date: str = ""
+    pub_date: str = ""           # raw dari RSS
+    published_at: str | None = None  # ISO format UTC (parsed dari pub_date)
 
 
 def _clean_url(url: str) -> str:
@@ -52,6 +55,17 @@ def _strip_html(html: str) -> str:
     return text.strip()
 
 
+def _parse_pub_date(raw: str) -> str | None:
+    """Parse RSS published date ke ISO format UTC."""
+    if not raw:
+        return None
+    try:
+        dt = email.utils.parsedate_to_datetime(raw)
+        return dt.astimezone(timezone.utc).isoformat()
+    except (ValueError, TypeError):
+        return None
+
+
 async def fetch_rss_feed(site: dict) -> list[Article]:
     """Fetch dan parse RSS feed dari satu site."""
     rss_url = site["rss_feed_url"]
@@ -71,6 +85,7 @@ async def fetch_rss_feed(site: dict) -> list[Article]:
     for entry in feed.entries:
         categories = [tag.term for tag in getattr(entry, "tags", [])]
         description = _strip_html(entry.get("summary", ""))
+        raw_pub = entry.get("published", "")
 
         article = Article(
             title=entry.get("title", ""),
@@ -80,7 +95,8 @@ async def fetch_rss_feed(site: dict) -> list[Article]:
             source_slug=site["slug"],
             categories=categories,
             description=description,
-            pub_date=entry.get("published", ""),
+            pub_date=raw_pub,
+            published_at=_parse_pub_date(raw_pub),
         )
         articles.append(article)
 
@@ -123,14 +139,7 @@ async def fetch_full_content(article: Article, wp_api_url: str) -> Article:
 
 
 async def get_new_articles(db: Database, max_age_days: int = 2) -> list[Article]:
-    """Cek RSS feed dari SEMUA site dan return artikel yang belum pernah di-post.
-
-    Args:
-        db: Database instance
-        max_age_days: Maksimal umur artikel dalam hari (default 2 hari)
-    """
-    from datetime import datetime, timezone, timedelta
-
+    """Cek RSS feed dari SEMUA site dan return artikel yang belum pernah di-post."""
     all_new = []
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
 
@@ -139,33 +148,24 @@ async def get_new_articles(db: Database, max_age_days: int = 2) -> list[Article]
             articles = await fetch_rss_feed(site)
 
             for article in articles:
-                # Skip artikel yang sudah pernah diproses
                 if db.is_article_posted(article.url):
                     continue
 
                 # Filter artikel yang terlalu lama (> max_age_days)
-                if article.pub_date:
+                if article.published_at:
                     try:
-                        # Parse published date dari RSS
-                        import email.utils
-                        pub_timestamp = email.utils.parsedate_to_datetime(article.pub_date)
-
-                        # Cek apakah artikel terlalu lama
-                        if pub_timestamp < cutoff_date:
+                        pub_dt = datetime.fromisoformat(article.published_at)
+                        if pub_dt < cutoff_date:
                             logger.info(
                                 "Skipping old article from %s: %s (published: %s)",
                                 site["name"],
                                 article.title,
-                                pub_timestamp.strftime("%Y-%m-%d")
+                                pub_dt.strftime("%Y-%m-%d"),
                             )
                             continue
-                    except (ValueError, TypeError) as e:
-                        logger.warning(
-                            "Could not parse pub_date for '%s': %s (will process anyway)",
-                            article.title, e
-                        )
+                    except (ValueError, TypeError):
+                        pass
 
-                # Fetch full content dan tambahkan ke list
                 article = await fetch_full_content(article, site["wp_api_url"])
                 all_new.append(article)
                 logger.info("New article from %s: %s", site["name"], article.title)

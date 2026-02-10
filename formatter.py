@@ -1,13 +1,13 @@
-"""Format caption untuk X/Twitter dan Facebook."""
+"""Format caption untuk sosial media (X/Twitter & Facebook)."""
 
 from html import escape
 
 
-def format_for_x(caption: str, url: str, hashtags: list[str], quote: str = "") -> str:
+def format_post(caption: str, url: str, hashtags: list[str], quote: str = "") -> str:
     """
-    Format post untuk X/Twitter.
+    Format post untuk X/Twitter & Facebook (sama).
     Struktur: caption + link + hashtags
-    Maks total: 280 karakter
+    Maks total: 280 karakter (estimasi X)
     """
     hashtag_str = " ".join(hashtags)
     url_length = 23  # X menghitung semua URL sebagai 23 karakter (t.co)
@@ -33,33 +33,16 @@ def format_for_x(caption: str, url: str, hashtags: list[str], quote: str = "") -
     return post
 
 
-def format_for_fb(caption: str, url: str, hashtags: list[str], quote: str = "") -> str:
-    """
-    Format post untuk Facebook.
-    Struktur: caption + hashtag + link (agar preview link muncul)
-    """
-    hashtag_str = " ".join(hashtags)
-
-    if quote:
-        post = f'"{quote}"\n\n{caption}\n\n{hashtag_str}\n\n{url}'
-    else:
-        post = f"{caption}\n\n{hashtag_str}\n\n{url}"
-
-    return post
-
-
 def format_telegram_notification(
     title: str,
     url: str,
     source_name: str,
-    caption_x: str,
-    caption_fb: str,
+    caption: str,
     hashtags: list[str],
     quote: str = "",
 ) -> str:
     """Format notifikasi untuk Telegram - siap copy paste."""
-    x_post = format_for_x(caption_x, url, hashtags, quote)
-    fb_post = format_for_fb(caption_fb, url, hashtags, quote)
+    post = format_post(caption, url, hashtags, quote)
 
     safe_title = escape(title)
     safe_source = escape(source_name)
@@ -70,16 +53,10 @@ def format_telegram_notification(
 {url}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
-<b>COPY UNTUK X/TWITTER:</b>
+<b>COPY UNTUK X / FACEBOOK:</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-<code>{escape(x_post)}</code>
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-<b>COPY UNTUK FACEBOOK:</b>
-━━━━━━━━━━━━━━━━━━━━━━━━
-
-<code>{escape(fb_post)}</code>
+<code>{escape(post)}</code>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 <i>Tap pada teks di atas untuk copy</i>"""

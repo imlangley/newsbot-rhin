@@ -50,7 +50,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_type = update.effective_chat.type
     username = update.effective_user.username or update.effective_user.first_name
 
-    # Di grup, subscriber adalah grup itu sendiri
     db.add_subscriber(chat_id, username)
     logger.info("New subscriber: %s (chat_id: %d, type: %s)", username, chat_id, chat_type)
 
@@ -65,20 +64,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "<b>Perintah:</b>\n"
         "/check - Cek artikel baru sekarang\n"
         "/today - Lihat berita hari ini (semua sumber)\n"
-        "/ruang - Lihat berita hari ini dari RUANG.ID\n"
-        "/catra - Lihat berita hari ini dari CATRAWARTA\n"
-        "/mabur - Lihat berita hari ini dari MABUR.CO\n"
+        "/ruang - Berita hari ini dari RUANG.ID\n"
+        "/catra - Berita hari ini dari CATRAWARTA\n"
+        "/mabur - Berita hari ini dari MABUR.CO\n"
         "/latest - 5 artikel terakhir\n"
         "/status - Status bot\n"
         "/stop - Berhenti berlangganan\n"
         "/help - Bantuan"
     )
 
-    # Di grup, reply ke message yang trigger command
-    if chat_type in ["group", "supergroup"]:
-        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
-    else:
-        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -100,20 +95,15 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/start - Mulai & berlangganan notifikasi\n"
         "/stop - Berhenti berlangganan\n"
         "/check - Cek artikel baru sekarang (manual)\n"
-        "/today - Lihat semua berita yang sudah diproses hari ini\n"
-        "/ruang - Lihat berita hari ini dari RUANG.ID\n"
-        "/catra - Lihat berita hari ini dari CATRAWARTA\n"
-        "/mabur - Lihat berita hari ini dari MABUR.CO\n"
-        "/latest - Lihat 5 artikel terakhir yang sudah diproses\n"
-        "/status - Status bot (jumlah subscriber, artikel, dll)\n"
+        "/today - Lihat semua berita hari ini\n"
+        "/ruang - Berita hari ini dari RUANG.ID\n"
+        "/catra - Berita hari ini dari CATRAWARTA\n"
+        "/mabur - Berita hari ini dari MABUR.CO\n"
+        "/latest - Lihat 5 artikel terakhir\n"
+        "/status - Status bot\n"
         "/help - Tampilkan pesan ini\n\n"
         f"Bot otomatis cek artikel baru setiap <b>{interval} menit</b>.\n\n"
         f"<b>Sumber berita:</b>\n{site_list}\n\n"
-        "Setiap ada artikel baru, bot akan:\n"
-        "1. Mengambil konten lengkap artikel\n"
-        "2. Merangkum dengan AI\n"
-        "3. Membuat caption untuk X/Twitter dan Facebook\n"
-        "4. Mengirim notifikasi siap copy-paste\n\n"
         f"Rekap harian otomatis dikirim setiap jam <b>{Config.RECAP_HOUR_WIB}:00 WIB</b>."
     )
 
@@ -128,11 +118,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     subscriber_count = db.get_subscriber_count()
     interval = Config.CHECK_INTERVAL_SECONDS // 60
 
-    # Hitung artikel hari ini
     today_articles = db.get_today_articles(Config.RECAP_HOUR_WIB)
     today_count = len(today_articles)
 
-    # Info job queue
     jobs = context.job_queue.jobs()
     job_info = "Aktif" if jobs else "Tidak aktif"
 
@@ -163,20 +151,51 @@ async def cmd_latest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     msg = "<b>5 Artikel Terakhir:</b>\n\n"
     for i, art in enumerate(articles, 1):
         source = art.get("source", "?").upper()
+        pub_str = _format_published_time(art)
         msg += f"{i}. [{source}] <a href='{art['url']}'>{escape(art['title'])}</a>\n"
-        msg += f"   {art['posted_at'][:10]}\n\n"
+        msg += f"   {pub_str}\n\n"
 
     await update.message.reply_text(
         msg, parse_mode=ParseMode.HTML, disable_web_page_preview=True
     )
 
 
+def _format_published_time(art: dict) -> str:
+    """Format waktu publish artikel ke WIB. Pakai published_at dari web asli."""
+    pub = art.get("published_at")
+    if pub:
+        try:
+            dt = datetime.fromisoformat(pub).astimezone(WIB)
+            return dt.strftime("%d/%m/%Y %H:%M WIB")
+        except (ValueError, TypeError):
+            pass
+    # Fallback ke posted_at
+    try:
+        dt = datetime.fromisoformat(art["posted_at"]).astimezone(WIB)
+        return dt.strftime("%d/%m/%Y %H:%M WIB")
+    except (ValueError, KeyError, TypeError):
+        return art.get("posted_at", "?")[:16]
+
+
+def _render_article_list(articles: list[dict], source_name: str) -> str:
+    """Render daftar artikel jadi pesan Telegram."""
+    msg = f"<b>Berita Hari Ini - {escape(source_name)}</b>\n"
+    msg += f"Total: <b>{len(articles)}</b> artikel\n\n"
+
+    for i, art in enumerate(articles, 1):
+        pub_str = _format_published_time(art)
+        msg += f"{i}. <a href='{art['url']}'>{escape(art['title'])}</a>\n"
+        msg += f"   {pub_str}\n\n"
+
+    return msg
+
+
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /today - lihat berita yang sudah diproses hari ini (semua source)."""
+    """Handle /today - lihat berita hari ini (semua source)."""
     articles = db.get_today_articles(Config.RECAP_HOUR_WIB)
 
     if not articles:
-        await update.message.reply_text("Belum ada artikel yang diproses hari ini.")
+        await update.message.reply_text("Belum ada artikel yang di-publish hari ini.")
         return
 
     # Kelompokkan per source
@@ -187,25 +206,8 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Kirim per source sebagai bubble terpisah
     for source_slug, arts in by_source.items():
-        # Cari nama site dari SITES config
-        source_name = source_slug.upper()
-        for s in SITES:
-            if s["slug"] == source_slug:
-                source_name = s["name"]
-                break
-
-        msg = f"<b>Berita Hari Ini - {escape(source_name)}</b>\n"
-        msg += f"Total: <b>{len(arts)}</b> artikel\n\n"
-
-        for i, art in enumerate(arts, 1):
-            msg += f"{i}. <a href='{art['url']}'>{escape(art['title'])}</a>\n"
-            # Tampilkan jam diproses (convert ke WIB)
-            try:
-                posted_utc = datetime.fromisoformat(art["posted_at"])
-                posted_wib = posted_utc.astimezone(WIB)
-                msg += f"   {posted_wib.strftime('%H:%M WIB')}\n\n"
-            except (ValueError, KeyError):
-                msg += f"   {art['posted_at'][:16]}\n\n"
+        source_name = _get_source_name(source_slug)
+        msg = _render_article_list(arts, source_name)
 
         await update.message.reply_text(
             msg, parse_mode=ParseMode.HTML, disable_web_page_preview=True
@@ -216,57 +218,36 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_source_today(update: Update, context: ContextTypes.DEFAULT_TYPE, source_slug: str) -> None:
     """Helper: lihat berita hari ini dari 1 source saja."""
     articles = db.get_today_articles(Config.RECAP_HOUR_WIB)
-
-    # Filter by source
     filtered = [a for a in articles if a.get("source") == source_slug]
+    source_name = _get_source_name(source_slug)
 
     if not filtered:
-        # Cari nama site dari SITES config
-        source_name = source_slug.upper()
-        for s in SITES:
-            if s["slug"] == source_slug:
-                source_name = s["name"]
-                break
-        await update.message.reply_text(f"Belum ada artikel dari {source_name} yang diproses hari ini.")
+        await update.message.reply_text(f"Belum ada artikel dari {source_name} yang di-publish hari ini.")
         return
 
-    # Cari nama site dari SITES config
-    source_name = source_slug.upper()
-    for s in SITES:
-        if s["slug"] == source_slug:
-            source_name = s["name"]
-            break
-
-    msg = f"<b>Berita Hari Ini - {escape(source_name)}</b>\n"
-    msg += f"Total: <b>{len(filtered)}</b> artikel\n\n"
-
-    for i, art in enumerate(filtered, 1):
-        msg += f"{i}. <a href='{art['url']}'>{escape(art['title'])}</a>\n"
-        # Tampilkan jam diproses (convert ke WIB)
-        try:
-            posted_utc = datetime.fromisoformat(art["posted_at"])
-            posted_wib = posted_utc.astimezone(WIB)
-            msg += f"   {posted_wib.strftime('%H:%M WIB')}\n\n"
-        except (ValueError, KeyError):
-            msg += f"   {art['posted_at'][:16]}\n\n"
-
+    msg = _render_article_list(filtered, source_name)
     await update.message.reply_text(
         msg, parse_mode=ParseMode.HTML, disable_web_page_preview=True
     )
 
 
+def _get_source_name(source_slug: str) -> str:
+    """Cari nama site dari slug."""
+    for s in SITES:
+        if s["slug"] == source_slug:
+            return s["name"]
+    return source_slug.upper()
+
+
 async def cmd_ruang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /ruang - lihat berita hari ini dari RUANG.ID."""
     await cmd_source_today(update, context, "ruangid")
 
 
 async def cmd_catra(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /catra - lihat berita hari ini dari CATRAWARTA."""
     await cmd_source_today(update, context, "catrawarta")
 
 
 async def cmd_mabur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /mabur - lihat berita hari ini dari MABUR.CO."""
     await cmd_source_today(update, context, "maburco")
 
 
@@ -320,14 +301,13 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Rekap harian - dikirim setiap jam 19:00 WIB ke semua subscriber."""
     logger.info("Running daily recap")
 
-    articles = db.get_today_articles(Config.RECAP_HOUR_WIB)
+    articles = db.get_today_articles_for_recap(Config.RECAP_HOUR_WIB)
     subscribers = db.get_subscribers()
 
     if not subscribers:
         logger.info("No subscribers for daily recap")
         return
 
-    # Kelompokkan per source
     by_source: dict[str, list[dict]] = {}
     for art in articles:
         src = art.get("source", "unknown")
@@ -337,7 +317,6 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
     now_wib = datetime.now(WIB)
     date_str = now_wib.strftime("%d %B %Y")
 
-    # Buat pesan rekap
     msg = f"<b>Rekap Harian - {date_str}</b>\n\n"
     msg += f"Total artikel diproses hari ini: <b>{total}</b>\n\n"
 
@@ -345,12 +324,7 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
         msg += "Tidak ada artikel baru yang diproses hari ini."
     else:
         for source_slug, arts in by_source.items():
-            source_name = source_slug.upper()
-            for s in SITES:
-                if s["slug"] == source_slug:
-                    source_name = s["name"]
-                    break
-
+            source_name = _get_source_name(source_slug)
             msg += f"<b>{escape(source_name)}</b>: {len(arts)} artikel\n"
             for i, art in enumerate(arts, 1):
                 msg += f"  {i}. {escape(art['title'])}\n"
@@ -358,7 +332,6 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     msg += f"\n<i>Cutoff: {Config.RECAP_HOUR_WIB}:00 WIB</i>"
 
-    # Kirim ke semua subscriber
     for chat_id in subscribers:
         try:
             await context.bot.send_message(
@@ -380,26 +353,27 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def _process_and_send_article(article, context: ContextTypes.DEFAULT_TYPE):
     """Process satu artikel: summarize lalu kirim ke semua subscriber (1 artikel = 1 bubble chat)."""
     try:
-        # CRITICAL: Mark sebagai posted SEBELUM process untuk prevent race condition
-        # Jadi kalau ada scheduled check lagi, artikel ini ga ke-detect sebagai "new"
-        db.mark_article_posted(article.url, article.title, article.source_slug)
+        # Mark as posted SEBELUM process (prevent race condition)
+        db.mark_article_posted(
+            article.url, article.title, article.source_slug,
+            published_at=article.published_at,
+        )
         logger.info("Marked as posted (before processing): %s (%s)", article.title, article.source_name)
 
         # Summarize dengan AI
         summary = await summarize_article(article)
 
-        # Format notifikasi Telegram (sudah per-artikel, per-source)
+        # Format notifikasi Telegram (1 caption untuk X & FB)
         notification = format_telegram_notification(
             title=article.title,
             url=article.url,
             source_name=article.source_name,
-            caption_x=summary["caption_x"],
-            caption_fb=summary["caption_fb"],
+            caption=summary["caption"],
             hashtags=summary["hashtags"],
             quote=summary.get("quote", ""),
         )
 
-        # Kirim ke semua subscriber - setiap artikel = 1 bubble chat terpisah
+        # Kirim ke semua subscriber
         subscribers = db.get_subscribers()
         for chat_id in subscribers:
             try:

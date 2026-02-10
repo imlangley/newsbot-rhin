@@ -28,6 +28,7 @@ class Database:
                     url TEXT UNIQUE NOT NULL,
                     title TEXT NOT NULL,
                     source TEXT NOT NULL DEFAULT 'ruangid',
+                    published_at TEXT,
                     posted_at TEXT NOT NULL
                 );
 
@@ -40,13 +41,17 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_articles_url ON posted_articles(url);
                 CREATE INDEX IF NOT EXISTS idx_articles_source ON posted_articles(source);
             """)
-            # Migrasi: tambah kolom source jika belum ada (untuk DB lama)
-            try:
-                conn.execute("SELECT source FROM posted_articles LIMIT 1")
-            except sqlite3.OperationalError:
-                conn.execute(
-                    "ALTER TABLE posted_articles ADD COLUMN source TEXT NOT NULL DEFAULT 'ruangid'"
-                )
+            # Migrasi: tambah kolom jika belum ada (untuk DB lama)
+            for col, default in [
+                ("source", "'ruangid'"),
+                ("published_at", "NULL"),
+            ]:
+                try:
+                    conn.execute(f"SELECT {col} FROM posted_articles LIMIT 1")
+                except sqlite3.OperationalError:
+                    conn.execute(
+                        f"ALTER TABLE posted_articles ADD COLUMN {col} TEXT DEFAULT {default}"
+                    )
             conn.commit()
             logger.info("Database initialized at %s", self.db_path)
         finally:
@@ -62,12 +67,12 @@ class Database:
         finally:
             conn.close()
 
-    def mark_article_posted(self, url: str, title: str, source: str = "ruangid"):
+    def mark_article_posted(self, url: str, title: str, source: str = "ruangid", published_at: str | None = None):
         conn = self._get_conn()
         try:
             conn.execute(
-                "INSERT OR IGNORE INTO posted_articles (url, title, source, posted_at) VALUES (?, ?, ?, ?)",
-                (url, title, source, datetime.now(timezone.utc).isoformat()),
+                "INSERT OR IGNORE INTO posted_articles (url, title, source, published_at, posted_at) VALUES (?, ?, ?, ?, ?)",
+                (url, title, source, published_at, datetime.now(timezone.utc).isoformat()),
             )
             conn.commit()
         finally:
@@ -78,48 +83,63 @@ class Database:
         try:
             if source:
                 rows = conn.execute(
-                    "SELECT url, title, source, posted_at FROM posted_articles WHERE source = ? ORDER BY id DESC LIMIT ?",
+                    "SELECT url, title, source, published_at, posted_at FROM posted_articles WHERE source = ? ORDER BY id DESC LIMIT ?",
                     (source, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT url, title, source, posted_at FROM posted_articles ORDER BY id DESC LIMIT ?",
+                    "SELECT url, title, source, published_at, posted_at FROM posted_articles ORDER BY id DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
             return [dict(r) for r in rows]
         finally:
             conn.close()
 
-    def get_articles_since(self, since_utc: str) -> list[dict]:
-        """Ambil semua artikel yang diproses sejak timestamp tertentu (UTC ISO format)."""
+    def get_today_articles(self, recap_hour: int = 19) -> list[dict]:
+        """Ambil artikel yang di-publish HARI INI berdasarkan published_at dari web aslinya.
+
+        Menggunakan tanggal WIB hari ini (00:00 - 23:59 WIB).
+        """
+        now_wib = datetime.now(WIB)
+        # Awal hari ini WIB (00:00:00)
+        start_of_day_wib = now_wib.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Convert ke UTC
+        start_utc = start_of_day_wib.astimezone(timezone.utc).isoformat()
+
         conn = self._get_conn()
         try:
             rows = conn.execute(
-                "SELECT url, title, source, posted_at FROM posted_articles WHERE posted_at >= ? ORDER BY id ASC",
-                (since_utc,),
+                "SELECT url, title, source, published_at, posted_at FROM posted_articles "
+                "WHERE published_at IS NOT NULL AND published_at >= ? "
+                "ORDER BY published_at ASC",
+                (start_utc,),
             ).fetchall()
             return [dict(r) for r in rows]
         finally:
             conn.close()
 
-    def get_today_articles(self, recap_hour: int = 19) -> list[dict]:
-        """Ambil artikel hari ini berdasarkan cutoff jam recap_hour WIB.
-
-        Periode: kemarin jam recap_hour WIB sampai sekarang.
-        Contoh: cutoff jam 19 -> dari kemarin 19:00 WIB sampai sekarang.
-        """
+    def get_today_articles_for_recap(self, recap_hour: int = 19) -> list[dict]:
+        """Ambil artikel untuk rekap harian. Cutoff: kemarin jam recap_hour WIB sampai sekarang."""
         now_wib = datetime.now(WIB)
         today_cutoff = now_wib.replace(hour=recap_hour, minute=0, second=0, microsecond=0)
 
-        # Jika sekarang belum lewat jam cutoff, pakai cutoff kemarin
         if now_wib < today_cutoff:
             start = today_cutoff - timedelta(days=1)
         else:
             start = today_cutoff
 
-        # Convert ke UTC ISO string untuk query
         start_utc = start.astimezone(timezone.utc).isoformat()
-        return self.get_articles_since(start_utc)
+
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT url, title, source, published_at, posted_at FROM posted_articles "
+                "WHERE posted_at >= ? ORDER BY id ASC",
+                (start_utc,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
 
     def get_article_count(self) -> int:
         conn = self._get_conn()

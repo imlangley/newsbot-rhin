@@ -9,31 +9,28 @@ from rss_checker import Article
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Kamu social media manager. Buat caption repost berita ke X/Twitter dan Facebook.
+SYSTEM_PROMPT = """Kamu social media manager. Buat caption repost berita ke sosial media (X/Twitter & Facebook).
 
 ATURAN:
 - Bahasa Indonesia, interaktif (ajakan baca/komentar)
 - Sertakan kutipan tokoh jika ada di artikel
-- Caption X: MAKS 180 karakter
-- Caption FB: 2-3 kalimat deskriptif
+- Caption: 1-3 kalimat ringkas dan menarik, MAKS 250 karakter
 - 3-5 hashtag relevan (tanpa #, nanti ditambah otomatis)
 - Jangan copy judul, buat lebih menarik
 
 BALAS HANYA JSON VALID, TANPA code block, TANPA backtick:
-{"caption_x":"...","caption_fb":"...","hashtags":["tag1","tag2","tag3"],"quote":"kutipan atau kosong"}"""
+{"caption":"...","hashtags":["tag1","tag2","tag3"],"quote":"kutipan atau kosong"}"""
 
 
 def _extract_json(text: str) -> dict | None:
     """Extract JSON dari response AI, handle berbagai format."""
     text = text.strip()
 
-    # 1. Coba langsung parse
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 2. Coba extract dari code block ```json ... ``` atau ``` ... ```
     match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
     if match:
         try:
@@ -41,7 +38,6 @@ def _extract_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
 
-    # 3. Cari dari { pertama sampai } terakhir
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -49,7 +45,6 @@ def _extract_json(text: str) -> dict | None:
         try:
             return json.loads(candidate)
         except json.JSONDecodeError:
-            # Coba perbaiki common issues
             candidate = re.sub(r",\s*}", "}", candidate)
             candidate = re.sub(r",\s*]", "]", candidate)
             try:
@@ -64,7 +59,6 @@ async def summarize_article(article: Article) -> dict:
     """Kirim artikel ke AI untuk dirangkum jadi caption sosmed."""
     content = article.full_content if article.full_content else article.description
 
-    # Truncate di batas paragraf jika terlalu panjang
     if len(content) > 2000:
         truncated = content[:2000]
         last_period = truncated.rfind(".")
@@ -118,22 +112,27 @@ Balas HANYA JSON, tanpa teks lain."""
             logger.error("Could not extract JSON from AI response")
             return _fallback_summary(article)
 
-        # Validasi field yang dibutuhkan
-        required_fields = ["caption_x", "caption_fb", "hashtags"]
-        for fld in required_fields:
-            if fld not in result:
-                raise ValueError(f"Missing field: {fld}")
+        # Support old format (caption_x/caption_fb) dan new format (caption)
+        if "caption" not in result:
+            if "caption_x" in result:
+                result["caption"] = result["caption_x"]
+            elif "caption_fb" in result:
+                result["caption"] = result["caption_fb"]
+            else:
+                raise ValueError("Missing field: caption")
+
+        if "hashtags" not in result:
+            raise ValueError("Missing field: hashtags")
 
         # Pastikan hashtags adalah list
         if isinstance(result["hashtags"], str):
             result["hashtags"] = [h.strip() for h in result["hashtags"].split(",")]
 
-        # Bersihkan hashtag - tambah # jika belum ada
+        # Bersihkan hashtag
         result["hashtags"] = [
             f"#{h.lstrip('#').replace(' ', '')}" for h in result["hashtags"]
         ]
 
-        # Pastikan quote ada
         if "quote" not in result:
             result["quote"] = ""
 
@@ -147,21 +146,17 @@ Balas HANYA JSON, tanpa teks lain."""
 
 def _fallback_summary(article: Article) -> dict:
     """Fallback summary jika AI gagal."""
-    caption_x = article.title
-    if len(caption_x) > 200:
-        caption_x = caption_x[:197] + "..."
+    caption = article.title
+    if len(caption) > 250:
+        caption = caption[:247] + "..."
 
-    caption_fb = article.description[:500] if article.description else article.title
-
-    # Generate hashtags dari categories + source
     hashtags = [f"#{cat.replace(' ', '')}" for cat in article.categories[:3]]
     hashtags.append(f"#{article.source_name.replace('.', '').replace(' ', '')}")
     if not hashtags:
         hashtags = ["#Berita", "#Indonesia"]
 
     return {
-        "caption_x": caption_x,
-        "caption_fb": caption_fb,
+        "caption": caption,
         "hashtags": hashtags,
         "quote": "",
     }
