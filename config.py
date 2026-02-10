@@ -48,5 +48,6 @@ class Config:
     # Timezone offset WIB (UTC+7)
     WIB_OFFSET_HOURS: int = 7
 
-    # Jam cutoff rekap harian (default jam 19:00 WIB)
+    # Jam cutoff rekap harian (default jam 19:30 WIB)
     RECAP_HOUR_WIB: int = 19
+    RECAP_MINUTE_WIB: int = 30
