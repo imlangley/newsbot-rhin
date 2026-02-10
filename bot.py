@@ -32,6 +32,7 @@ async def post_init(application: Application) -> None:
             BotCommand("start", "Mulai & berlangganan notifikasi"),
             BotCommand("stop", "Berhenti berlangganan notifikasi"),
             BotCommand("check", "Cek artikel baru sekarang"),
+            BotCommand("recap", "Trigger rekap harian manual"),
             BotCommand("today", "Lihat berita hari ini (semua sumber)"),
             BotCommand("ruang", "Lihat berita hari ini dari RUANG.ID"),
             BotCommand("catra", "Lihat berita hari ini dari CATRAWARTA"),
@@ -251,6 +252,12 @@ async def cmd_mabur(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await cmd_source_today(update, context, "maburco")
 
 
+async def cmd_recap(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /recap - trigger manual daily recap."""
+    await update.message.reply_text("Generating daily recap...")
+    await daily_recap(context)
+
+
 async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /check - manual check for new articles."""
     await update.message.reply_text("Sedang mengecek artikel baru dari semua sumber...")
@@ -418,6 +425,7 @@ def create_bot(database: Database) -> Application:
     app.add_handler(CommandHandler("catra", cmd_catra))
     app.add_handler(CommandHandler("mabur", cmd_mabur))
     app.add_handler(CommandHandler("check", cmd_check))
+    app.add_handler(CommandHandler("recap", cmd_recap))
 
     # Setup scheduled job - cek RSS setiap interval
     app.job_queue.run_repeating(
