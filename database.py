@@ -118,23 +118,23 @@ class Database:
         finally:
             conn.close()
 
-    def get_today_articles_for_recap(self, recap_hour: int = 19) -> list[dict]:
-        """Ambil artikel untuk rekap harian. Cutoff: kemarin jam recap_hour WIB sampai sekarang."""
+    def get_today_articles_for_recap(self, recap_hour: int = 19, recap_minute: int = 30) -> list[dict]:
+        """Ambil artikel untuk rekap harian dari 00:00 WIB hari ini sampai sekarang.
+
+        Rekap "hari ini" = artikel yang di-post bot dari jam 00:00:00 WIB sampai sekarang.
+        Cutoff ditampilkan sebagai recap_hour:recap_minute WIB untuk informasi user.
+        """
         now_wib = datetime.now(WIB)
-        today_cutoff = now_wib.replace(hour=recap_hour, minute=0, second=0, microsecond=0)
-
-        if now_wib < today_cutoff:
-            start = today_cutoff - timedelta(days=1)
-        else:
-            start = today_cutoff
-
-        start_utc = start.astimezone(timezone.utc).isoformat()
+        # Awal hari ini WIB (00:00:00)
+        start_of_day_wib = now_wib.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Convert ke UTC
+        start_utc = start_of_day_wib.astimezone(timezone.utc).isoformat()
 
         conn = self._get_conn()
         try:
             rows = conn.execute(
                 "SELECT url, title, source, published_at, posted_at FROM posted_articles "
-                "WHERE posted_at >= ? ORDER BY id ASC",
+                "WHERE posted_at >= ? ORDER BY posted_at ASC",
                 (start_utc,),
             ).fetchall()
             return [dict(r) for r in rows]

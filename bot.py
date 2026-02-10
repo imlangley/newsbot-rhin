@@ -308,7 +308,7 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Rekap harian - dikirim setiap jam 19:30 WIB ke semua subscriber."""
     logger.info("Running daily recap")
 
-    articles = db.get_today_articles_for_recap(Config.RECAP_HOUR_WIB)
+    articles = db.get_today_articles_for_recap(Config.RECAP_HOUR_WIB, Config.RECAP_MINUTE_WIB)
     subscribers = db.get_subscribers()
 
     if not subscribers:
