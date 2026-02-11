@@ -40,6 +40,7 @@ def format_telegram_notification(
     caption: str,
     hashtags: list[str],
     quote: str = "",
+    source_slug: str = "",
 ) -> str:
     """Format notifikasi untuk Telegram - siap copy paste dengan tombol copy."""
     post = format_post(caption, url, hashtags, quote)
@@ -47,11 +48,21 @@ def format_telegram_notification(
     safe_title = escape(title)
     safe_source = escape(source_name)
 
+    # Hashtag sumber untuk searchable di Telegram
+    # Mapping slug ke hashtag
+    source_hashtag_map = {
+        "ruangid": "#Ruang",
+        "catrawarta": "#Catra",
+        "maburco": "#Mabur"
+    }
+    hashtag_telegram = source_hashtag_map.get(source_slug, f"#{source_slug}")
+
     # <pre> tag = otomatis muncul tombol Copy di Telegram mobile & desktop
     msg = (
         f"<b>{safe_source}</b>\n"
         f"<b>{safe_title}</b>\n\n"
-        f"<pre>{escape(post)}</pre>"
+        f"<pre>{escape(post)}</pre>\n\n"
+        f"{hashtag_telegram}"
     )
 
     return msg
