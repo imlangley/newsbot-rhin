@@ -375,7 +375,6 @@ async def _process_and_send_article(article, context: ContextTypes.DEFAULT_TYPE)
             source_name=article.source_name,
             caption=summary["caption"],
             hashtags=summary["hashtags"],
-            quote=summary.get("quote", ""),
             source_slug=article.source_slug,
         )
 

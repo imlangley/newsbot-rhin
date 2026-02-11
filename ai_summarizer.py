@@ -20,11 +20,6 @@ GAYA PENULISAN:
 - Jangan copy judul artikel
 - Tanpa emoji
 
-QUOTE:
-- Default KOSONG
-- Isi cuma kalau ada kutipan yang beneran kontroversial/viral-worthy
-- Tulis tanpa tanda petik, maks 70 char: isi kutipan - Nama
-
 HASHTAG:
 - 2 saja, tanpa simbol #
 
@@ -36,12 +31,11 @@ CONTOH BAGUS:
 - Harga beras naik 15% tapi yang salah ternyata bukan petani...
 
 CONTOH JELEK (jangan kayak gini):
-- "Di tengah disorientasi politik, belajarlah dari ketulusan BPUPK" (= terlalu formal, bahasa kolom opini)
+- "Di tengah disorientasi politik, belajarlah dari ketulusan BPUPK" (= terlalu formal)
 - "Pernyataan kian melukai rasa keadilan publik" (= bukan bahasa orang ngomong)
-- "Era digital melahirkan jenis maling baru" (= terlalu halus, gak nampol)
 
 BALAS HANYA JSON:
-{"caption":"...","hashtags":["tag1","tag2"],"quote":""}"""
+{"caption":"...","hashtags":["tag1","tag2"]}""""""
 
 
 def _extract_json(text: str) -> dict | None:
