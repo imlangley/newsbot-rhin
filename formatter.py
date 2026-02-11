@@ -13,6 +13,8 @@ def format_post(caption: str, url: str, hashtags: list[str], quote: str = "") ->
     url_length = 23  # X menghitung semua URL sebagai 23 karakter (t.co)
 
     if quote:
+        # Strip tanda petik dari AI kalau ada (prevent double quotes)
+        quote = quote.strip('"').strip('"').strip('"')
         post = f'"{quote}"\n\n{caption}\n\n{url}\n\n{hashtag_str}'
     else:
         post = f"{caption}\n\n{url}\n\n{hashtag_str}"
