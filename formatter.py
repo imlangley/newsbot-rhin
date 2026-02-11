@@ -58,10 +58,11 @@ def format_telegram_notification(
     hashtag_telegram = source_hashtag_map.get(source_slug, f"#{source_slug}")
 
     # <pre> tag = otomatis muncul tombol Copy di Telegram mobile & desktop
+    # JANGAN escape isi <pre> karena plain text (tanda petik quote jadi dobel kalau di-escape)
     msg = (
         f"<b>{safe_source}</b>\n"
         f"<b>{safe_title}</b>\n\n"
-        f"<pre>{escape(post)}</pre>\n\n"
+        f"<pre>{post}</pre>\n\n"
         f"{hashtag_telegram}"
     )
 
