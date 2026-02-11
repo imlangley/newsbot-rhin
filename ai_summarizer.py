@@ -30,7 +30,8 @@ TEKNIK CAPTION:
 ATURAN QUOTE:
 - Sertakan HANYA jika ada kutipan tokoh/narasumber yang powerful dan provokatif
 - Maks 80 karakter, potong dengan "..." jika perlu
-- Format: "kutipan..." - Nama
+- Format quote TANPA tanda petik: kutipan... - Nama
+- (Tanda petik akan ditambahkan otomatis saat formatting)
 - Kalau gak ada yang kuat, KOSONGKAN (lebih baik caption kuat tanpa quote lemah)
 
 ATURAN HASHTAG:
