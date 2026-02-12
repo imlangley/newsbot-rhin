@@ -35,7 +35,7 @@ CONTOH JELEK (jangan kayak gini):
 - "Pernyataan kian melukai rasa keadilan publik" (= bukan bahasa orang ngomong)
 
 BALAS HANYA JSON:
-{"caption":"...","hashtags":["tag1","tag2"]}""""""
+{"caption":"...","hashtags":["tag1","tag2"]}"""
 
 
 def _extract_json(text: str) -> dict | None:
