@@ -1,28 +1,34 @@
-"""Format caption untuk sosial media (X/Twitter & Facebook)."""
+"""Format caption untuk X/Twitter."""
 
 from html import escape
 
 
-def format_post(caption: str, url: str, hashtags: list[str]) -> str:
+def format_post(paragraphs: str, url: str, cta: str = "") -> str:
     """
-    Format post untuk X/Twitter & Facebook (sama).
-    Struktur: caption + link + hashtags
-    Maks total: 280 karakter (estimasi X)
+    Format X single post: paragraphs + link + CTA
+    Total maks 280 char (URL selalu dihitung 23 char oleh X)
     """
-    hashtag_str = " ".join(hashtags)
-    url_length = 23  # X menghitung semua URL sebagai 23 karakter (t.co)
+    url_length = 23
+    # overhead: \n sebelum url, \n sebelum cta, \n\n antar bagian
+    # struktur: paragraphs\n\nurl\n\ncta
+    overhead = 2 + url_length + (2 + len(cta) if cta else 0)
+    max_para = 280 - overhead
 
-    post = f"{caption}\n\n{url}\n\n{hashtag_str}"
-
-    # Cek panjang (estimasi - URL dihitung 23 char oleh X)
-    estimated_length = len(post) - len(url) + url_length
-    if estimated_length > 280:
-        excess = estimated_length - 280
-        if len(caption) > excess + 3:
-            caption = caption[: len(caption) - excess - 3] + "..."
+    if len(paragraphs) > max_para:
+        # cari titik terakhir sebelum batas
+        trimmed = paragraphs[:max_para]
+        last_period = trimmed.rfind(".")
+        if last_period > max_para // 2:
+            paragraphs = trimmed[: last_period + 1]
         else:
-            caption = caption[:50] + "..."
-        post = f"{caption}\n\n{url}\n\n{hashtag_str}"
+            # ga ada titik yang cukup dekat, potong di spasi
+            last_space = trimmed.rfind(" ")
+            paragraphs = trimmed[:last_space] + "..." if last_space > 0 else trimmed + "..."
+
+    parts = [paragraphs, url]
+    if cta:
+        parts.append(cta)
+    post = "\n\n".join(parts)
 
     return post
 
@@ -34,22 +40,25 @@ def format_telegram_notification(
     caption: str,
     hashtags: list[str],
     source_slug: str = "",
+    hook: str = "",
+    paragraphs: str = "",
+    cta: str = "",
+    body: str = "",
 ) -> str:
-    """Format notifikasi untuk Telegram - siap copy paste dengan tombol copy."""
-    post = format_post(caption, url, hashtags)
+    """Format notifikasi Telegram — siap copy paste ke X."""
+    main_text = paragraphs or body or hook or caption
+    post = format_post(main_text, url, cta)
 
     safe_title = escape(title)
     safe_source = escape(source_name)
 
-    # Hashtag sumber untuk searchable di Telegram
     source_hashtag_map = {
         "ruangid": "#Ruang",
         "catrawarta": "#Catra",
-        "maburco": "#Mabur"
+        "maburco": "#Mabur",
     }
     hashtag_telegram = source_hashtag_map.get(source_slug, f"#{source_slug}")
 
-    # <pre> tag = otomatis muncul tombol Copy di Telegram mobile & desktop
     msg = (
         f"<b>{safe_source}</b>\n"
         f"<b>{safe_title}</b>\n\n"

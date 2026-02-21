@@ -48,6 +48,7 @@ class Config:
     # Timezone offset WIB (UTC+7)
     WIB_OFFSET_HOURS: int = 7
 
-    # Jam cutoff rekap harian (default jam 19:30 WIB)
-    RECAP_HOUR_WIB: int = 19
-    RECAP_MINUTE_WIB: int = 30
+    # Jam cutoff rekap harian (default jam 20:00 WIB)
+    RECAP_HOUR_WIB: int = 20
+    RECAP_MINUTE_WIB: int = 0
+    # slug sumber yang di-auto-post ke X

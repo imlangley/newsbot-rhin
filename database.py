@@ -38,6 +38,18 @@ class Database:
                     subscribed_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS x_reminders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    article_url TEXT NOT NULL,
+                    article_title TEXT NOT NULL,
+                    chat_id INTEGER NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    posted_to_x INTEGER DEFAULT 0,
+                    reminded INTEGER DEFAULT 0,
+                    UNIQUE(article_url, chat_id)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_articles_url ON posted_articles(url);
                 CREATE INDEX IF NOT EXISTS idx_articles_source ON posted_articles(source);
             """)
@@ -78,6 +90,16 @@ class Database:
         finally:
             conn.close()
 
+    def get_article_id(self, url: str) -> int | None:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT id FROM posted_articles WHERE url = ?", (url,)
+            ).fetchone()
+            return row["id"] if row else None
+        finally:
+            conn.close()
+
     def get_recent_articles(self, limit: int = 5, source: str | None = None) -> list[dict]:
         conn = self._get_conn()
         try:
@@ -96,14 +118,9 @@ class Database:
             conn.close()
 
     def get_today_articles(self, recap_hour: int = 19) -> list[dict]:
-        """Ambil artikel yang di-publish HARI INI berdasarkan published_at dari web aslinya.
-
-        Menggunakan tanggal WIB hari ini (00:00 - 23:59 WIB).
-        """
+        """Ambil artikel yang di-publish HARI INI berdasarkan published_at dari web aslinya."""
         now_wib = datetime.now(WIB)
-        # Awal hari ini WIB (00:00:00)
         start_of_day_wib = now_wib.replace(hour=0, minute=0, second=0, microsecond=0)
-        # Convert ke UTC
         start_utc = start_of_day_wib.astimezone(timezone.utc).isoformat()
 
         conn = self._get_conn()
@@ -118,24 +135,26 @@ class Database:
         finally:
             conn.close()
 
-    def get_today_articles_for_recap(self, recap_hour: int = 19, recap_minute: int = 30) -> list[dict]:
-        """Ambil artikel untuk rekap harian dari 00:00 WIB hari ini sampai sekarang.
-
-        Rekap "hari ini" = artikel yang di-post bot dari jam 00:00:00 WIB sampai sekarang.
-        Cutoff ditampilkan sebagai recap_hour:recap_minute WIB untuk informasi user.
-        """
+    def get_today_articles_for_recap(self, recap_hour: int = 20, recap_minute: int = 0) -> list[dict]:
+        """Ambil artikel rekap berdasarkan waktu publish web: 00:00 WIB sampai cutoff recap."""
         now_wib = datetime.now(WIB)
-        # Awal hari ini WIB (00:00:00)
         start_of_day_wib = now_wib.replace(hour=0, minute=0, second=0, microsecond=0)
-        # Convert ke UTC
+        cutoff_wib = start_of_day_wib.replace(hour=recap_hour, minute=recap_minute)
+
+        # Jika dipanggil sebelum jam cutoff (manual), batasi sampai waktu saat ini
+        if now_wib < cutoff_wib:
+            cutoff_wib = now_wib
+
         start_utc = start_of_day_wib.astimezone(timezone.utc).isoformat()
+        cutoff_utc = cutoff_wib.astimezone(timezone.utc).isoformat()
 
         conn = self._get_conn()
         try:
             rows = conn.execute(
                 "SELECT url, title, source, published_at, posted_at FROM posted_articles "
-                "WHERE posted_at >= ? ORDER BY posted_at ASC",
-                (start_utc,),
+                "WHERE published_at IS NOT NULL AND published_at >= ? AND published_at <= ? "
+                "ORDER BY published_at ASC",
+                (start_utc, cutoff_utc),
             ).fetchall()
             return [dict(r) for r in rows]
         finally:
@@ -181,5 +200,77 @@ class Database:
         try:
             row = conn.execute("SELECT COUNT(*) as cnt FROM subscribers").fetchone()
             return row["cnt"]
+        finally:
+            conn.close()
+
+    def add_x_reminder(self, article_url: str, article_title: str, chat_id: int, message_id: int):
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                """INSERT OR REPLACE INTO x_reminders
+                   (article_url, article_title, chat_id, message_id, created_at, posted_to_x, reminded)
+                   VALUES (?, ?, ?, ?, ?, 0, 0)""",
+                (article_url, article_title, chat_id, message_id,
+                 datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_x_reminder_id(self, article_url: str, chat_id: int) -> int | None:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT id FROM x_reminders WHERE article_url = ? AND chat_id = ?",
+                (article_url, chat_id),
+            ).fetchone()
+            return row["id"] if row else None
+        finally:
+            conn.close()
+
+    def mark_x_posted(self, article_url: str, chat_id: int):
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "UPDATE x_reminders SET posted_to_x = 1 WHERE article_url = ? AND chat_id = ?",
+                (article_url, chat_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def mark_x_posted_by_id(self, reminder_id: int, chat_id: int):
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "UPDATE x_reminders SET posted_to_x = 1 WHERE id = ? AND chat_id = ?",
+                (reminder_id, chat_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_pending_x_reminders(self, older_than_minutes: int = 30) -> list[dict]:
+        """Ambil reminders yang belum dipost dan belum diremind, lebih dari N menit lalu."""
+        conn = self._get_conn()
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=older_than_minutes)).isoformat()
+            rows = conn.execute(
+                """SELECT * FROM x_reminders
+                   WHERE posted_to_x = 0 AND reminded = 0 AND created_at <= ?""",
+                (cutoff,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def mark_x_reminded(self, article_url: str, chat_id: int):
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "UPDATE x_reminders SET reminded = 1 WHERE article_url = ? AND chat_id = ?",
+                (article_url, chat_id),
+            )
+            conn.commit()
         finally:
             conn.close()
