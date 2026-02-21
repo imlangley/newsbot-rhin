@@ -88,14 +88,14 @@ def _trim_text(text: str, max_len: int) -> str:
     punct_idx = max(
         trimmed.rfind("."), trimmed.rfind("!"), trimmed.rfind("?"), trimmed.rfind("\n")
     )
-    if punct_idx > int(max_len * 0.6):
+    if punct_idx > int(max_len * 0.5):
         return trimmed[: punct_idx + 1].strip()
 
     space_idx = trimmed.rfind(" ")
-    if space_idx > int(max_len * 0.6):
-        return trimmed[:space_idx].strip() + "..."
+    if space_idx > int(max_len * 0.5):
+        return trimmed[:space_idx].strip()
 
-    return trimmed.rstrip() + "..."
+    return trimmed.rstrip()
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -252,7 +252,7 @@ Balas HANYA JSON valid."""
         if not cta:
             cta = "Baca selengkapnya."
         if len(cta) > 24:
-            cta = _trim_text(cta, 24)
+            cta = "Baca selengkapnya."
 
         max_len = _x_max_paragraphs(cta)
         paragraphs = _ensure_two_paragraphs(paragraphs, content, max_len, target_min)

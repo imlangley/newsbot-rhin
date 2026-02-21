@@ -17,13 +17,15 @@ def format_post(paragraphs: str, url: str, cta: str = "") -> str:
     if len(paragraphs) > max_para:
         # cari titik terakhir sebelum batas
         trimmed = paragraphs[:max_para]
-        last_period = trimmed.rfind(".")
+        last_period = max(trimmed.rfind("."), trimmed.rfind("!"), trimmed.rfind("?"))
         if last_period > max_para // 2:
-            paragraphs = trimmed[: last_period + 1]
+            paragraphs = trimmed[: last_period + 1].strip()
         else:
             # ga ada titik yang cukup dekat, potong di spasi
             last_space = trimmed.rfind(" ")
-            paragraphs = trimmed[:last_space] + "..." if last_space > 0 else trimmed + "..."
+            paragraphs = (
+                trimmed[:last_space].strip() if last_space > 0 else trimmed.strip()
+            )
 
     parts = [paragraphs, url]
     if cta:
