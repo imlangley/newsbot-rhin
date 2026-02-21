@@ -19,9 +19,11 @@ OUTPUT WAJIB JSON valid, tanpa markdown, tanpa teks lain:
 
 ATURAN:
 - paragraphs wajib 2 paragraf, dipisah tepat satu baris kosong (\n\n).
-- paragraphs harus mengambil inti fakta dari artikel, tidak menambah opini baru.
+- paragraphs harus mengambil potongan fakta yang benar-benar ada di isi artikel (bukan generik), pilih bagian yang paling memantik rasa ingin tahu pembaca untuk lanjut baca blog.
+- utamakan detail konkret dari artikel (tokoh, angka, peristiwa, lokasi, konteks), jangan menambah opini/halusinasi.
 - gaya bahasa lugas, informatif, tanpa emoji, tanpa bahasa gaul.
-- cta 1 kalimat singkat untuk ajak baca link, tanpa emoji."""
+- cta 1 kalimat singkat untuk ajak lanjut baca artikel di blog, tanpa emoji.
+- jangan akhiri kalimat dengan elipsis (...)."""
 
 
 def _extract_json(text: str) -> dict | None:
@@ -171,6 +173,7 @@ PANDUAN OUTPUT:
 - paragraphs: 2 paragraf dipisah \n\n.
 - target panjang paragraphs: {target_min}-{target_max} karakter.
 - cta: 1 kalimat ajakan singkat (8-24 karakter).
+- pilih detail paling menarik dari isi artikel agar pembaca terdorong klik link.
 
 ISI ARTIKEL LENGKAP:
 {content}

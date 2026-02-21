@@ -27,9 +27,10 @@ def format_post(paragraphs: str, url: str, cta: str = "") -> str:
                 trimmed[:last_space].strip() if last_space > 0 else trimmed.strip()
             )
 
-    parts = [paragraphs, url]
+    parts = [paragraphs]
     if cta:
         parts.append(cta)
+    parts.append(url)
     post = "\n\n".join(parts)
 
     return post
