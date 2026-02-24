@@ -12,18 +12,21 @@ logger = logging.getLogger(__name__)
 X_CHAR_LIMIT = 280
 X_URL_LENGTH = 23
 
-SYSTEM_PROMPT = """Kamu editor konten X (Twitter) untuk berita.
+SYSTEM_PROMPT = """Kamu adalah Social Media Specialist dan Copywriter profesional untuk portal berita asal Indonesia.
+
+Tugasmu adalah membuat caption yang akan disebar ke Telegram, Facebook, WhatsApp, dan X/Twitter.
 
 OUTPUT WAJIB JSON valid, tanpa markdown, tanpa teks lain:
-{"paragraphs":"isi","cta":"isi"}
+{"paragraphs":"isi","cta":"opsional, boleh kosong"}
 
-ATURAN:
-- paragraphs wajib 2 paragraf, dipisah tepat satu baris kosong (\n\n).
-- paragraphs harus mengambil potongan fakta yang benar-benar ada di isi artikel (bukan generik), pilih bagian yang paling memantik rasa ingin tahu pembaca untuk lanjut baca blog.
-- utamakan detail konkret dari artikel (tokoh, angka, peristiwa, lokasi, konteks), jangan menambah opini/halusinasi.
-- gaya bahasa lugas, informatif, tanpa emoji, tanpa bahasa gaul.
-- cta 1 kalimat singkat untuk ajak lanjut baca artikel di blog, tanpa emoji.
-- jangan akhiri kalimat dengan elipsis (...)."""
+SOP WAJIB DIIKUTI:
+1. ISI (PENTING!): BUKAN sekadar merangkum berita secara robotik. Kamu HARUS mengambil KUTIPAN PARAGRAF/KALIMAT ASLI yang paling menarik, tajam, atau 'nendang' langsung dari DALAM artikel. DILARANG KERAS menyalin kalimat pembuka artikel.
+2. FORMAT & STRUKTUR: Bebas menentukan jumlah paragraf asal nyaman dibaca. 
+    - Berikan konteks fakta di awal.
+    - Masukkan detail menarik (kutipan asli tokoh, angka spesifik, atau fakta mencengangkan) di paragraf selanjutnya.
+3. PANJANG: Aman dari limit karakter X (Maksimal teks total 200-220 karakter). Maksimalkan ruang yang ada agar padat informasi! Jangan terlalu pendek dan jangan sampai overlimit.
+4. CTA (Opsional): Buat CTA yang unik dan relevan (maks 30 karakter, misal: "Simak kronologinya."). JIKA teks sudah dirasa utuh dan tidak gantung, KOSONGKAN cta (""). JANGAN selalu pakai "Baca selengkapnya."!
+5. GAYA BAHASA: Jurnalisme lugas, memikat, BUKAN clickbait murahan. Tanpa emoji, tanpa bahasa gaul, tanpa elipsis (...) di akhir. Link artikel otomatis ditambahkan oleh sistem."""
 
 
 def _extract_json(text: str) -> dict | None:
@@ -133,24 +136,19 @@ def _build_paragraphs_from_content(content: str, max_len: int, target_min: int) 
     return _trim_text(merged, max_len)
 
 
-def _ensure_two_paragraphs(
-    paragraphs: str, content: str, max_len: int, target_min: int
-) -> str:
+def _ensure_length(paragraphs: str, content: str, max_len: int, target_min: int) -> str:
     base = paragraphs.strip()
-    if "\n\n" in base and len(base) >= target_min:
+    if len(base) >= target_min and len(base) <= max_len:
+        return base
+
+    if len(base) > max_len:
         return _trim_text(base, max_len)
 
     candidate = _build_paragraphs_from_content(content, max_len, target_min)
     if candidate and len(candidate) >= len(base):
         return candidate
 
-    if "\n\n" not in base:
-        pieces = _split_sentences(base)
-        if len(pieces) >= 2:
-            cut = max(1, len(pieces) // 2)
-            base = " ".join(pieces[:cut]) + "\n\n" + " ".join(pieces[cut:])
-
-    return _trim_text(base, max_len)
+    return base
 
 
 async def summarize_article(article: Article) -> dict:
@@ -162,7 +160,7 @@ async def summarize_article(article: Article) -> dict:
         return _fallback_summary(article)
 
     categories = ", ".join(article.categories[:3]) if article.categories else "-"
-    target_max = _x_max_paragraphs("Baca selengkapnya.")
+    target_max = _x_max_paragraphs("")
     target_min = max(170, target_max - 35)
 
     user_prompt = f"""SUMBER: {article.source_name}
@@ -170,10 +168,10 @@ JUDUL: {article.title}
 KATEGORI: {categories}
 
 PANDUAN OUTPUT:
-- paragraphs: 2 paragraf dipisah \n\n.
-- target panjang paragraphs: {target_min}-{target_max} karakter.
-- cta: 1 kalimat ajakan singkat (8-24 karakter).
-- pilih detail paling menarik dari isi artikel agar pembaca terdorong klik link.
+- Fokus pada DETAIL SPESIFIK dari isi artikel (angka, tokoh, kutipan, konteks).
+- Bebas tentukan jumlah paragraf (gunakan \\n\\n untuk pemisah).
+- TOTAL KARAKTER maksimal sekitar 200 karakter. Buat padat dan memikat.
+- CTA opsional (kosongkan jika tidak perlu).
 
 ISI ARTIKEL LENGKAP:
 {content}
@@ -197,7 +195,7 @@ Balas HANYA JSON valid."""
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": 0.6,
-                    "max_tokens": 1200,
+                    "max_tokens": 8192,
                 },
             )
             resp.raise_for_status()
@@ -216,7 +214,7 @@ Balas HANYA JSON valid."""
             logger.error(
                 "Could not extract JSON from AI response: %s", ai_response[:200]
             )
-            cta = "Baca selengkapnya."
+            cta = ""
             paragraphs = _build_paragraphs_from_content(
                 content, _x_max_paragraphs(cta), target_min
             )
@@ -240,7 +238,7 @@ Balas HANYA JSON valid."""
 
         if not paragraphs:
             logger.error("No paragraphs in AI response")
-            cta = "Baca selengkapnya."
+            cta = ""
             paragraphs = _build_paragraphs_from_content(
                 content, _x_max_paragraphs(cta), target_min
             )
@@ -252,13 +250,11 @@ Balas HANYA JSON valid."""
         paragraphs = re.sub(r"[ \t]+", " ", paragraphs).strip()
 
         cta = re.sub(r"\s+", " ", cta).strip()
-        if not cta:
-            cta = "Baca selengkapnya."
-        if len(cta) > 24:
-            cta = "Baca selengkapnya."
+        if len(cta) > 30:
+            cta = ""  # CTA terlalu panjang, buang saja
 
         max_len = _x_max_paragraphs(cta)
-        paragraphs = _ensure_two_paragraphs(paragraphs, content, max_len, target_min)
+        paragraphs = _ensure_length(paragraphs, content, max_len, target_min)
 
         return {
             "paragraphs": paragraphs,
@@ -274,7 +270,7 @@ Balas HANYA JSON valid."""
 
 
 def _fallback_summary(article: Article) -> dict:
-    cta = "Baca selengkapnya."
+    cta = ""
     raw = (article.description or article.title or "").strip()
     raw = re.sub(r"\s+", " ", raw)
     if not raw:
